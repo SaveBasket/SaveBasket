@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SaveBasket Owner</title>
+<style>
+body{font-family:system-ui;margin:0;background:#f7f3eb;color:#18222c}.wrap{max-width:520px;margin:7vh auto;padding:20px}
+.card{background:#fff;border-radius:20px;padding:26px;box-shadow:0 10px 30px #0001}
+input{width:100%;box-sizing:border-box;padding:13px;margin:7px 0 15px;border:1px solid #ddd;border-radius:10px}
+button,a{display:inline-block;padding:12px 16px;border-radius:10px;background:#18222c;color:#fff;border:0;text-decoration:none;font-weight:700}
+.muted{color:#68747e}.error{color:#b94a48}.success{color:#207342}
+.hidden{display:none}
+</style></head>
+<body><main class="wrap">
+<section id="login" class="card"><h1>🔐 SaveBasket Owner</h1>
+<p class="muted">Sign in to access the owner password page.</p>
+<form onsubmit="login(event)">
+<label>Email</label><input id="email" type="email" required autocomplete="username">
+<label>Password</label><input id="password" type="password" required autocomplete="current-password">
+<button>Sign in</button></form><p id="loginMsg"></p></section>
+
+<section id="change" class="card hidden"><h1>🔑 Change owner password</h1>
+<p class="muted">Enter your current password and choose a new password.</p>
+<form onsubmit="changePassword(event)">
+<label>Current password</label><input id="current" type="password" required autocomplete="current-password">
+<label>New password</label><input id="newpass" type="password" minlength="12" required autocomplete="new-password">
+<label>Confirm new password</label><input id="confirm" type="password" minlength="12" required autocomplete="new-password">
+<button>Change password</button></form><p id="changeMsg"></p>
+<p class="muted">After deployment, the persistent owner password should be stored in a database or managed secret. This minimal Vercel package does not write passwords to the Vercel filesystem.</p>
+<a href="/">🛒 Customer site</a></section>
+</main>
+<script>
+async function login(e){e.preventDefault();const msg=document.getElementById('loginMsg');msg.textContent='';
+const r=await fetch('/api/login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({email:email.value,password:password.value})});
+const d=await r.json(); if(!r.ok){msg.className='error';msg.textContent=d.error||'Login failed';return}
+document.getElementById('login').classList.add('hidden');document.getElementById('change').classList.remove('hidden');}
+async function changePassword(e){e.preventDefault();const msg=document.getElementById('changeMsg');
+if(newpass.value!==confirm.value){msg.className='error';msg.textContent='New passwords do not match';return}
+const r=await fetch('/api/change-password',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({currentPassword:current.value,newPassword:newpass.value})});
+const d=await r.json();msg.className=r.ok?'success':'error';msg.textContent=d.message||d.error||'Done';}
+</script></body></html>
