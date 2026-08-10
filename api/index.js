@@ -1,59 +1,47 @@
 import crypto from 'node:crypto';
+import bcrypt from 'bcryptjs';
+import { neon } from '@neondatabase/serverless';
 
 const ownerEmail = process.env.OWNER_EMAIL;
 const ownerPassword = process.env.OWNER_PASSWORD;
 const sessionSecret = process.env.SESSION_SECRET;
+const databaseUrl =
+  process.env.DATABASE_URL ||
+  process.env.POSTGRES_URL ||
+  process.env.NEON_DATABASE_URL;
+
+const sql = databaseUrl ? neon(databaseUrl) : null;
 
 function configurationError() {
-  return !ownerEmail || !ownerPassword || !sessionSecret;
+  return !ownerEmail || !ownerPassword || !sessionSecret || !sql;
 }
 
 function parseCookies(req) {
   const out = {};
-
   for (const part of (req.headers.cookie || '').split(';')) {
     const i = part.indexOf('=');
-
     if (i > -1) {
-      out[part.slice(0, i).trim()] =
-        decodeURIComponent(part.slice(i + 1).trim());
+      out[part.slice(0, i).trim()] = decodeURIComponent(part.slice(i + 1).trim());
     }
   }
-
   return out;
 }
 
 function sign(value) {
-  const sig = crypto
-    .createHmac('sha256', sessionSecret)
-    .update(value)
-    .digest('hex');
-
+  const sig = crypto.createHmac('sha256', sessionSecret).update(value).digest('hex');
   return `${value}.${sig}`;
 }
 
 function valid(token) {
   if (!token || !sessionSecret || !ownerEmail) return false;
-
   const i = token.lastIndexOf('.');
-
   if (i < 1) return false;
-
   const value = token.slice(0, i);
   const sig = token.slice(i + 1);
-
-  const expected = crypto
-    .createHmac('sha256', sessionSecret)
-    .update(value)
-    .digest('hex');
-
+  const expected = crypto.createHmac('sha256', sessionSecret).update(value).digest('hex');
   if (sig.length !== expected.length) return false;
-
   return (
-    crypto.timingSafeEqual(
-      Buffer.from(sig),
-      Buffer.from(expected)
-    ) &&
+    crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected)) &&
     value.startsWith(`${ownerEmail}|`)
   );
 }
@@ -66,31 +54,39 @@ function json(res, status, data) {
 
 async function body(req) {
   let s = '';
+  for await (const c of req) s += c;
+  try { return JSON.parse(s || '{}'); } catch { return {}; }
+}
 
-  for await (const c of req) {
-    s += c;
-  }
+async function ensureOwnerUser() {
+  const rows = await sql`
+    SELECT id, email, password_hash
+    FROM public.users
+    WHERE lower(email) = lower(${ownerEmail}) AND role = 'owner'
+    LIMIT 1
+  `;
 
-  try {
-    return JSON.parse(s || '{}');
-  } catch {
-    return {};
-  }
+  if (rows.length) return rows[0];
+
+  const hash = await bcrypt.hash(ownerPassword, 12);
+  const inserted = await sql`
+    INSERT INTO public.users (email, password_hash, role, must_change_password, created_at)
+    VALUES (${ownerEmail}, ${hash}, 'owner', false, now())
+    RETURNING id, email, password_hash
+  `;
+
+  return inserted[0];
 }
 
 export default async function handler(req, res) {
   if (configurationError()) {
     return json(res, 500, {
       error:
-        'SaveBasket owner authentication is not configured. Set OWNER_EMAIL, OWNER_PASSWORD and SESSION_SECRET in Vercel.'
+        'Owner authentication is not fully configured. Set OWNER_EMAIL, OWNER_PASSWORD, SESSION_SECRET and a Neon DATABASE_URL in Vercel.'
     });
   }
 
-  if (req.method !== 'POST') {
-    return json(res, 405, {
-      error: 'Method not allowed'
-    });
-  }
+  if (req.method !== 'POST') return json(res, 405, { error: 'Method not allowed' });
 
   const data = await body(req);
 
@@ -98,45 +94,58 @@ export default async function handler(req, res) {
     const email = String(data.email || '').trim();
     const password = String(data.password || '');
 
-    if (
-      email.toLowerCase() !== ownerEmail.toLowerCase() ||
-      password !== ownerPassword
-    ) {
-      return json(res, 401, {
-        error: 'Invalid email or password'
-      });
+    if (email.toLowerCase() !== ownerEmail.toLowerCase()) {
+      return json(res, 401, { error: 'Invalid email or password' });
+    }
+
+    try {
+      const user = await ensureOwnerUser();
+      const matches = await bcrypt.compare(password, user.password_hash);
+      if (!matches) return json(res, 401, { error: 'Invalid email or password' });
+    } catch (error) {
+      console.error('Owner login database error', error);
+      return json(res, 500, { error: 'Owner authentication storage is unavailable.' });
     }
 
     const token = sign(`${ownerEmail}|${Date.now()}`);
-
     res.setHeader(
       'set-cookie',
-      `savebasket_owner=${encodeURIComponent(
-        token
-      )}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=28800`
+      `savebasket_owner=${encodeURIComponent(token)}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=28800`
     );
-
-    return json(res, 200, {
-      ok: true
-    });
+    return json(res, 200, { ok: true });
   }
 
   if (req.url.includes('/api/change-password')) {
     const cookies = parseCookies(req);
-
     if (!valid(cookies.savebasket_owner)) {
-      return json(res, 401, {
-        error: 'Owner login required'
-      });
+      return json(res, 401, { error: 'Owner login required' });
     }
 
-    return json(res, 501, {
-      error:
-        'Password changes are not enabled in this deployment. Change OWNER_PASSWORD in Vercel and redeploy.'
-    });
+    const currentPassword = String(data.currentPassword || '');
+    const newPassword = String(data.newPassword || '');
+
+    if (newPassword.length < 12) {
+      return json(res, 400, { error: 'New password must be at least 12 characters.' });
+    }
+
+    try {
+      const user = await ensureOwnerUser();
+      const currentMatches = await bcrypt.compare(currentPassword, user.password_hash);
+      if (!currentMatches) return json(res, 401, { error: 'Current password is incorrect.' });
+
+      const nextHash = await bcrypt.hash(newPassword, 12);
+      await sql`
+        UPDATE public.users
+        SET password_hash = ${nextHash}, must_change_password = false
+        WHERE id = ${user.id} AND role = 'owner'
+      `;
+
+      return json(res, 200, { ok: true, message: 'Owner password changed successfully.' });
+    } catch (error) {
+      console.error('Owner password persistence error', error);
+      return json(res, 500, { error: 'Unable to persist the new owner password.' });
+    }
   }
 
-  return json(res, 404, {
-    error: 'Not found'
-  });
+  return json(res, 404, { error: 'Not found' });
 }
