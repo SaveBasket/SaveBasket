@@ -2,18 +2,27 @@ import crypto from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import { neon } from '@neondatabase/serverless';
 
-const ownerEmail = process.env.OWNER_EMAIL;
-const ownerPassword = process.env.OWNER_PASSWORD;
-const sessionSecret = process.env.SESSION_SECRET;
-const databaseUrl = process.env.DATABASE_URL || process.env.POSTGRES_URL || process.env.NEON_DATABASE_URL;
+function getConfig() {
+  return {
+    ownerEmail: process.env.OWNER_EMAIL,
+    ownerPassword: process.env.OWNER_PASSWORD,
+    sessionSecret: process.env.SESSION_SECRET,
+    databaseUrl: process.env.DATABASE_URL || process.env.POSTGRES_URL || process.env.NEON_DATABASE_URL
+  };
+}
 
-function getSql() {
+function getSql(databaseUrl) {
   if (!databaseUrl) throw new Error('Missing Neon database connection string');
   return neon(databaseUrl);
 }
 
-function configurationError() {
-  return !ownerEmail || !sessionSecret || !databaseUrl;
+function missingConfig(config) {
+  return [
+    !config.ownerEmail && 'OWNER_EMAIL',
+    !config.ownerPassword && 'OWNER_PASSWORD',
+    !config.sessionSecret && 'SESSION_SECRET',
+    !config.databaseUrl && 'DATABASE_URL'
+  ].filter(Boolean);
 }
 
 function parseCookies(req) {
@@ -25,12 +34,12 @@ function parseCookies(req) {
   return out;
 }
 
-function sign(value) {
+function sign(value, sessionSecret) {
   const sig = crypto.createHmac('sha256', sessionSecret).update(value).digest('hex');
   return `${value}.${sig}`;
 }
 
-function valid(token) {
+function valid(token, sessionSecret, ownerEmail) {
   if (!token || !sessionSecret || !ownerEmail) return false;
   const i = token.lastIndexOf('.');
   if (i < 1) return false;
@@ -53,7 +62,7 @@ async function body(req) {
   try { return JSON.parse(s || '{}'); } catch { return {}; }
 }
 
-async function findOwnerUser(sql) {
+async function findOwnerUser(sql, ownerEmail) {
   const rows = await sql`
     SELECT id, email, password_hash
     FROM public.users
@@ -63,8 +72,8 @@ async function findOwnerUser(sql) {
   return rows[0] || null;
 }
 
-async function ensureOwnerUser(sql) {
-  const existing = await findOwnerUser(sql);
+async function ensureOwnerUser(sql, ownerEmail, ownerPassword) {
+  const existing = await findOwnerUser(sql, ownerEmail);
   if (existing) return existing;
 
   if (!ownerPassword) throw new Error('OWNER_PASSWORD is required for first-time owner setup');
@@ -78,9 +87,18 @@ async function ensureOwnerUser(sql) {
 }
 
 export default async function handler(req, res) {
-  if (configurationError()) {
+  const config = getConfig();
+  const missing = missingConfig(config);
+  if (missing.length) {
+    console.error('Owner auth configuration diagnostics', {
+      OWNER_EMAIL: Boolean(config.ownerEmail),
+      OWNER_PASSWORD: Boolean(config.ownerPassword),
+      SESSION_SECRET: Boolean(config.sessionSecret),
+      DATABASE_URL: Boolean(config.databaseUrl),
+      missing
+    });
     return json(res, 500, {
-      error: 'Owner authentication is not fully configured. Set OWNER_EMAIL, SESSION_SECRET and a Neon DATABASE_URL in Vercel.'
+      error: 'Owner authentication is not fully configured. Set OWNER_EMAIL, OWNER_PASSWORD, SESSION_SECRET and a Neon DATABASE_URL in Vercel.'
     });
   }
 
@@ -90,11 +108,11 @@ export default async function handler(req, res) {
   if (req.url.includes('/api/login')) {
     const email = String(data.email || '').trim();
     const password = String(data.password || '');
-    if (email.toLowerCase() !== ownerEmail.toLowerCase()) return json(res, 401, { error: 'Invalid email or password' });
+    if (email.toLowerCase() !== config.ownerEmail.toLowerCase()) return json(res, 401, { error: 'Invalid email or password' });
 
     try {
-      const sql = getSql();
-      const user = await ensureOwnerUser(sql);
+      const sql = getSql(config.databaseUrl);
+      const user = await ensureOwnerUser(sql, config.ownerEmail, config.ownerPassword);
       if (!(await bcrypt.compare(password, user.password_hash))) return json(res, 401, { error: 'Invalid email or password' });
     } catch (error) {
       console.error('Owner login database error', error);
@@ -104,20 +122,20 @@ export default async function handler(req, res) {
       return json(res, 500, { error: 'Owner authentication storage is unavailable.' });
     }
 
-    const token = sign(`${ownerEmail}|${Date.now()}`);
+    const token = sign(`${config.ownerEmail}|${Date.now()}`, config.sessionSecret);
     res.setHeader('set-cookie', `savebasket_owner=${encodeURIComponent(token)}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=28800`);
     return json(res, 200, { ok: true });
   }
 
   if (req.url.includes('/api/change-password')) {
-    if (!valid(parseCookies(req).savebasket_owner)) return json(res, 401, { error: 'Owner login required' });
+    if (!valid(parseCookies(req).savebasket_owner, config.sessionSecret, config.ownerEmail)) return json(res, 401, { error: 'Owner login required' });
     const currentPassword = String(data.currentPassword || '');
     const newPassword = String(data.newPassword || '');
     if (newPassword.length < 12) return json(res, 400, { error: 'New password must be at least 12 characters.' });
 
     try {
-      const sql = getSql();
-      const user = await findOwnerUser(sql);
+      const sql = getSql(config.databaseUrl);
+      const user = await findOwnerUser(sql, config.ownerEmail);
       if (!user) return json(res, 500, { error: 'Owner account has not been initialized.' });
       if (!(await bcrypt.compare(currentPassword, user.password_hash))) return json(res, 401, { error: 'Current password is incorrect.' });
       const nextHash = await bcrypt.hash(newPassword, 12);
