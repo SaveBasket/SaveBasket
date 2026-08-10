@@ -22,6 +22,7 @@ function valid(token) {
   if (i < 1) return false;
   const value = token.slice(0,i), sig = token.slice(i+1);
   const expected = crypto.createHmac('sha256', process.env.SESSION_SECRET || 'CHANGE-ME-SESSION-SECRET').update(value).digest('hex');
+  if (sig.length !== expected.length) return false;
   return crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected)) && value.startsWith(ownerEmail + '|');
 }
 function json(res,status,data){res.status(status).setHeader('content-type','application/json');res.end(JSON.stringify(data));}
