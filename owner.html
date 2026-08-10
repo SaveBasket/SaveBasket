@@ -25,7 +25,7 @@ button,a{display:inline-block;padding:12px 16px;border-radius:10px;background:#1
 <label>New password</label><input id="newpass" type="password" minlength="12" required autocomplete="new-password">
 <label>Confirm new password</label><input id="confirm" type="password" minlength="12" required autocomplete="new-password">
 <button>Change password</button></form><p id="changeMsg"></p>
-<p class="muted">After deployment, the persistent owner password should be stored in a database or managed secret. This minimal Vercel package does not write passwords to the Vercel filesystem.</p>
+<p class="muted">Your owner password is stored as a secure hash in Neon PostgreSQL and is not written to the Vercel filesystem.</p>
 <a href="/">🛒 Customer site</a></section>
 </main>
 <script>
