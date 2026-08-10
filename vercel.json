@@ -3,6 +3,10 @@
     {
       "source": "/owner",
       "destination": "/owner.html"
+    },
+    {
+      "source": "/api/:path*",
+      "destination": "/api/index.js"
     }
   ]
 }
