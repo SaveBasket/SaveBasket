@@ -98,7 +98,14 @@ export default async function handler(req, res) {
       missing
     });
     return json(res, 500, {
-      error: 'Owner authentication is not fully configured. Set OWNER_EMAIL, OWNER_PASSWORD, SESSION_SECRET and a Neon DATABASE_URL in Vercel.'
+      error: 'Owner authentication is not fully configured.',
+      configured: {
+        OWNER_EMAIL: Boolean(config.ownerEmail),
+        OWNER_PASSWORD: Boolean(config.ownerPassword),
+        SESSION_SECRET: Boolean(config.sessionSecret),
+        DATABASE_URL: Boolean(config.databaseUrl)
+      },
+      missing
     });
   }
 
