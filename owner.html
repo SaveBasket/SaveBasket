@@ -29,12 +29,48 @@ button,a{display:inline-block;padding:12px 16px;border-radius:10px;background:#1
 <a href="/">🛒 Customer site</a></section>
 </main>
 <script>
-async function login(e){e.preventDefault();const msg=document.getElementById('loginMsg');msg.textContent='';
-const r=await fetch('/api/login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({email:email.value,password:password.value})});
-const d=await r.json(); if(!r.ok){msg.className='error';msg.textContent=d.error||'Login failed';return}
-document.getElementById('login').classList.add('hidden');document.getElementById('change').classList.remove('hidden');}
-async function changePassword(e){e.preventDefault();const msg=document.getElementById('changeMsg');
-if(newpass.value!==confirm.value){msg.className='error';msg.textContent='New passwords do not match';return}
-const r=await fetch('/api/change-password',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({currentPassword:current.value,newPassword:newpass.value})});
-const d=await r.json();msg.className=r.ok?'success':'error';msg.textContent=d.message||d.error||'Done';}
+const emailInput=document.getElementById('email');
+const passwordInput=document.getElementById('password');
+const currentInput=document.getElementById('current');
+const newPasswordInput=document.getElementById('newpass');
+const confirmInput=document.getElementById('confirm');
+
+async function readJson(response){
+  const text=await response.text();
+  try{return JSON.parse(text)}catch{return {error:`Request failed (${response.status})`}}
+}
+
+async function login(e){
+  e.preventDefault();
+  const msg=document.getElementById('loginMsg');
+  msg.className='';
+  msg.textContent='Signing in…';
+
+  try{
+    const r=await fetch('/api/login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({email:emailInput.value.trim(),password:passwordInput.value})});
+    const d=await readJson(r);
+    if(!r.ok){msg.className='error';msg.textContent=d.error||'Login failed';return}
+    document.getElementById('login').classList.add('hidden');
+    document.getElementById('change').classList.remove('hidden');
+  }catch(err){
+    msg.className='error';
+    msg.textContent='Unable to reach the login service. Please try again.';
+  }
+}
+
+async function changePassword(e){
+  e.preventDefault();
+  const msg=document.getElementById('changeMsg');
+  msg.className='';
+  if(newPasswordInput.value!==confirmInput.value){msg.className='error';msg.textContent='New passwords do not match';return}
+  try{
+    const r=await fetch('/api/change-password',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({currentPassword:currentInput.value,newPassword:newPasswordInput.value})});
+    const d=await readJson(r);
+    msg.className=r.ok?'success':'error';
+    msg.textContent=d.message||d.error||'Done';
+  }catch(err){
+    msg.className='error';
+    msg.textContent='Unable to reach the password service. Please try again.';
+  }
+}
 </script></body></html>
