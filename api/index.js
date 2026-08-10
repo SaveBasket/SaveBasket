@@ -13,7 +13,7 @@ function getSql() {
 }
 
 function configurationError() {
-  return !ownerEmail || !ownerPassword || !sessionSecret || !databaseUrl;
+  return !ownerEmail || !sessionSecret || !databaseUrl;
 }
 
 function parseCookies(req) {
@@ -53,15 +53,21 @@ async function body(req) {
   try { return JSON.parse(s || '{}'); } catch { return {}; }
 }
 
-async function ensureOwnerUser(sql) {
+async function findOwnerUser(sql) {
   const rows = await sql`
     SELECT id, email, password_hash
     FROM public.users
     WHERE lower(email) = lower(${ownerEmail}) AND role = 'owner'
     LIMIT 1
   `;
-  if (rows.length) return rows[0];
+  return rows[0] || null;
+}
 
+async function ensureOwnerUser(sql) {
+  const existing = await findOwnerUser(sql);
+  if (existing) return existing;
+
+  if (!ownerPassword) throw new Error('OWNER_PASSWORD is required for first-time owner setup');
   const hash = await bcrypt.hash(ownerPassword, 12);
   const inserted = await sql`
     INSERT INTO public.users (email, password_hash, role, must_change_password, created_at)
@@ -74,7 +80,7 @@ async function ensureOwnerUser(sql) {
 export default async function handler(req, res) {
   if (configurationError()) {
     return json(res, 500, {
-      error: 'Owner authentication is not fully configured. Set OWNER_EMAIL, OWNER_PASSWORD, SESSION_SECRET and a Neon DATABASE_URL in Vercel.'
+      error: 'Owner authentication is not fully configured. Set OWNER_EMAIL, SESSION_SECRET and a Neon DATABASE_URL in Vercel.'
     });
   }
 
@@ -92,6 +98,9 @@ export default async function handler(req, res) {
       if (!(await bcrypt.compare(password, user.password_hash))) return json(res, 401, { error: 'Invalid email or password' });
     } catch (error) {
       console.error('Owner login database error', error);
+      if (String(error?.message || '').includes('first-time owner setup')) {
+        return json(res, 500, { error: 'Owner account has not been initialized. Set OWNER_PASSWORD in Vercel once, then sign in.' });
+      }
       return json(res, 500, { error: 'Owner authentication storage is unavailable.' });
     }
 
@@ -108,7 +117,8 @@ export default async function handler(req, res) {
 
     try {
       const sql = getSql();
-      const user = await ensureOwnerUser(sql);
+      const user = await findOwnerUser(sql);
+      if (!user) return json(res, 500, { error: 'Owner account has not been initialized.' });
       if (!(await bcrypt.compare(currentPassword, user.password_hash))) return json(res, 401, { error: 'Current password is incorrect.' });
       const nextHash = await bcrypt.hash(newPassword, 12);
       await sql`
