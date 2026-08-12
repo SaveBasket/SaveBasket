@@ -17,6 +17,9 @@ on:
       - 'package.json'
       - '.github/workflows/savebasket-ci.yml'
 
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -26,6 +29,7 @@ jobs:
         with:
           node-version: 20
           cache: npm
-      - run: npm install
+          cache-dependency-path: package.json
+      - run: npm install --ignore-scripts
       - run: npm run check
       - run: npm test
