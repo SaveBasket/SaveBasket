@@ -7,13 +7,17 @@ export default async function handler(req, res) {
   if (!key || !price) return res.status(503).json({ error: 'Billing is not configured yet.' });
   try {
     const stripe = new Stripe(key);
+    const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
+    const userId = body.user_id || undefined;
     const session = await stripe.checkout.sessions.create({
       mode: 'subscription',
       line_items: [{ price, quantity: 1 }],
       success_url: process.env.STRIPE_SUCCESS_URL || `${req.headers.origin || ''}/?checkout=success`,
       cancel_url: process.env.STRIPE_CANCEL_URL || `${req.headers.origin || ''}/?checkout=cancelled`,
       allow_promotion_codes: true,
-      billing_address_collection: 'auto'
+      billing_address_collection: 'auto',
+      metadata: userId ? { user_id: userId, plan: 'pro' } : { plan: 'pro' },
+      subscription_data: { metadata: userId ? { user_id: userId, plan: 'pro' } : { plan: 'pro' } }
     });
     return res.status(200).json({ url: session.url });
   } catch (error) {
