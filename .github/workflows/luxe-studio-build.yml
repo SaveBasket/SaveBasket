@@ -2,7 +2,7 @@ name: Luxe Studio build
 
 on:
   push:
-    branches: [luxe-studio-foundation]
+    branches: [luxe-studio-foundation, luxe-studio-production]
     paths:
       - 'luxe-studio/**'
       - '.github/workflows/luxe-studio-build.yml'
@@ -25,3 +25,5 @@ jobs:
           cache-dependency-path: luxe-studio/package.json
       - run: npm install
       - run: npm run build
+      - run: node --check api/create-checkout.js
+      - run: node --check api/stripe-webhook.js
