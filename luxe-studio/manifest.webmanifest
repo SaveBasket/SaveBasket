@@ -1,0 +1,10 @@
+{
+  "name":"Luxe Studio — MPC Workstation",
+  "short_name":"Luxe Studio",
+  "start_url":"./",
+  "display":"standalone",
+  "background_color":"#070707",
+  "theme_color":"#070707",
+  "description":"Browser-native MPC music workstation for sampling, pads, sequencing, mixing and mastering.",
+  "icons":[]
+}
