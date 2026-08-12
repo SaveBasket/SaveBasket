@@ -1,45 +1,50 @@
-# Luxe Studio — Foundation
+# Luxe Studio — MPC Workstation Foundation
 
-A premium browser-based music production workstation foundation, created as the continuation path for the Luxe Studio Core build.
+Luxe Studio is a separate music-production product. It is stored in the SaveBasket GitHub account for convenience, but it is **not SaveBasket** and must not be merged into SaveBasket/main.
 
 ## Current working features
 
 - Cinematic desktop-first studio UI
-- Transport: play / stop / record / BPM / metronome state
+- Transport: play / stop / record / BPM / position
 - MPC-style 16-pad grid with mouse and keyboard triggering
 - Built-in Web Audio synth voices so the workstation is usable immediately
 - Sample file import and browser-side audio decoding
-- Sample controls: trim, pitch, level, reverse/slice interaction states
-- 16-step pattern sequencer with clear and pattern playback
-- Mixer console and master meter UI
-- Effects rack
-- Plugin / marketplace catalog with purchase/library interaction states
+- Sample controls: trim, pitch, level and slice workflow states
+- 16-step pattern sequencer with clear, quantize and playback controls
+- Arrangement, mixer and master views
+- Mixer level/pan/mute state persisted locally
 - Microphone recording with MediaRecorder when browser permissions allow
-- WAV bounce/export utility
-- Project browser and local-first/cloud-ready architecture cues
+- Pattern WAV bounce/export
+- Full `.luxe.json` project export/import
+- Local autosave / recovery
+- Optional Supabase authentication and cloud project vault
+- Cloud project create/update/list/load with per-user row-level-security-compatible queries
+- Optional Stripe Pro subscription checkout + webhook foundation
+- Installable/offline-ready PWA shell with service-worker caching
 - Responsive desktop/tablet/mobile behavior
 
 ## Product direction
 
-Luxe Studio is intended to grow into a commercial music-production platform:
-
 `OPEN PROJECT → SAMPLE → RECORD → PLAY PADS → SEQUENCE → ARRANGE → MIX → MASTER → EXPORT`
 
-Future production layers should use Web Audio / AudioWorklet / WASM for DSP, object storage for audio assets, PostgreSQL/Supabase for project metadata and entitlements, and Stripe/Paddle for billing. Native VST/AU binaries should not be claimed as browser plugins; the intended plugin path is browser-native Web Audio / AudioWorklet / WASM modules with a first-party SDK/registry.
+Luxe Studio is intended to grow into a commercial browser-native music-production platform. The architecture keeps audio processing honest: browser plugins should use Web Audio / AudioWorklet / WASM rather than pretending native VST/AU binaries run in the browser. Supabase/Postgres is the project and entitlement layer; object storage is the correct home for large audio assets; Stripe is the current billing foundation.
 
-## Continue in v0
+## Cloud setup
 
-This repository is intentionally importable as an existing GitHub codebase. v0 supports importing existing GitHub repositories and working against the actual codebase with a real preview environment. Select the `luxe-studio` directory as the project root when prompted.
+Configure `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in the Luxe Studio deployment. Run `production/schema.sql` in the Supabase project before enabling cloud project saves. The client only queries rows owned by the authenticated user; the schema's RLS policies remain the security boundary.
 
-Recommended next build pass:
+## Billing setup
 
-1. Convert the foundation to a component architecture while preserving the visual language.
-2. Add real audio timeline/arrangement state and clip editing.
-3. Add AudioWorklet-based mixer/FX routing.
-4. Add autosave/versioning and Supabase project persistence.
-5. Add authenticated accounts and Free/Pro entitlements.
-6. Add Stripe/Paddle checkout + webhook-backed subscription state.
-7. Add marketplace product tables, creator profiles and revenue-share accounting.
-8. Add browser-native plugin SDK / registry and installation lifecycle.
-9. Add WAV/MP3/stem export using honest browser/server capability boundaries.
-10. Add automated build/type/runtime checks before production deployment.
+Configure `STRIPE_SECRET_KEY`, `STRIPE_PRO_PRICE_ID`, `STRIPE_WEBHOOK_SECRET`, `VITE_SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` for the Vercel API functions. Never expose service-role or Stripe secret keys in browser code.
+
+## Next production layers
+
+1. Replace visual timeline clips with a real audio timeline and non-destructive clip editing model.
+2. Move mixer/FX processing into AudioWorklet nodes and build a real bus graph.
+3. Add object-storage upload/resume for samples and recordings with waveform metadata.
+4. Add collaborative/project version history and conflict-safe autosave.
+5. Add Free/Pro entitlement gates around cloud storage, advanced DSP and exports.
+6. Add marketplace product fulfilment, creator accounts and revenue-share accounting.
+7. Add browser-native plugin SDK/manifest validation and a signed registry.
+8. Add stem rendering and MP3/AAC export where the selected browser/server path supports it.
+9. Add automated browser tests, audio regression tests and deployment health checks.
