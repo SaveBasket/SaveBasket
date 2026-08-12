@@ -1,50 +1,43 @@
-# Luxe Studio — MPC Workstation Foundation
+# Luxe Studio — production workstation
 
-Luxe Studio is a separate music-production product. It is stored in the SaveBasket GitHub account for convenience, but it is **not SaveBasket** and must not be merged into SaveBasket/main.
+Luxe Studio is a **separate product from SaveBasket**. SaveBasket is the consumer comparison/sourcing platform; Luxe Studio is the browser-native MPC/music-production workstation. They may live under the same GitHub account for convenience, but their code, deployment and product identity must remain separate.
 
-## Current working features
+## Production branch
 
-- Cinematic desktop-first studio UI
-- Transport: play / stop / record / BPM / position
-- MPC-style 16-pad grid with mouse and keyboard triggering
-- Built-in Web Audio synth voices so the workstation is usable immediately
-- Sample file import and browser-side audio decoding
-- Sample controls: trim, pitch, level and slice workflow states
-- 16-step pattern sequencer with clear, quantize and playback controls
-- Arrangement, mixer and master views
-- Mixer level/pan/mute state persisted locally
-- Microphone recording with MediaRecorder when browser permissions allow
-- Pattern WAV bounce/export
-- Full `.luxe.json` project export/import
-- Local autosave / recovery
-- Optional Supabase authentication and cloud project vault
-- Cloud project create/update/list/load with per-user row-level-security-compatible queries
-- Optional Stripe Pro subscription checkout + webhook foundation
-- Installable/offline-ready PWA shell with service-worker caching
-- Responsive desktop/tablet/mobile behavior
+`luxe-studio-production` is the release track for Luxe Studio. `main` remains the SaveBasket product line and does not contain the Luxe Studio application.
 
-## Product direction
+## Working product surface
 
-`OPEN PROJECT → SAMPLE → RECORD → PLAY PADS → SEQUENCE → ARRANGE → MIX → MASTER → EXPORT`
+- Cinematic desktop/tablet/mobile MPC-style workstation UI.
+- Transport with play/stop/record, BPM and bar/step position.
+- 16-pad bank with mouse and keyboard triggering.
+- Built-in Web Audio voices for immediate operation without external assets.
+- Audio file import with browser decoding.
+- Trim start/end, pitch and level controls.
+- 16-way sample slicing mapped to the pad bank.
+- 16-step pattern sequencer with length, swing, humanize and velocity controls.
+- Arrangement, mixer and master views with persisted project state.
+- Microphone recording through `MediaRecorder` when the browser grants permission.
+- Pattern WAV export and versioned `.luxe.json` project export/import.
+- Local autosave/recovery state.
+- Optional Supabase authentication and cloud project vault with per-user RLS.
+- Optional Stripe Pro checkout bound to a verified Supabase user identity.
+- PWA shell with cache rotation and offline-ready static assets.
+- Independent Vercel deployment contract in `luxe-studio/vercel.json`.
 
-Luxe Studio is intended to grow into a commercial browser-native music-production platform. The architecture keeps audio processing honest: browser plugins should use Web Audio / AudioWorklet / WASM rather than pretending native VST/AU binaries run in the browser. Supabase/Postgres is the project and entitlement layer; object storage is the correct home for large audio assets; Stripe is the current billing foundation.
+## Production setup
 
-## Cloud setup
+1. Deploy the Vercel project with **Root Directory = `luxe-studio`**.
+2. Configure the variables in `.env.example` in the Vercel project. Browser-safe values use the `VITE_` prefix; server secrets do not.
+3. Run `production/schema.sql` in the dedicated Supabase project before enabling cloud saves.
+4. Configure the Stripe Pro price and webhook endpoint for `api/stripe-webhook`.
+5. Set `APP_URL` to the public Luxe Studio origin. Checkout redirects are deliberately pinned to this value rather than trusting a request origin.
+6. Keep `SUPABASE_SERVICE_ROLE_KEY` and Stripe secrets server-only.
 
-Configure `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in the Luxe Studio deployment. Run `production/schema.sql` in the Supabase project before enabling cloud project saves. The client only queries rows owned by the authenticated user; the schema's RLS policies remain the security boundary.
+## Product boundary
 
-## Billing setup
+Do not move Luxe Studio code into SaveBasket/main. If a future GitHub repository is created for Luxe Studio, migrate the contents of this branch into that repository without changing the product identity or deployment root.
 
-Configure `STRIPE_SECRET_KEY`, `STRIPE_PRO_PRICE_ID`, `STRIPE_WEBHOOK_SECRET`, `VITE_SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` for the Vercel API functions. Never expose service-role or Stripe secret keys in browser code.
+## Commercial roadmap
 
-## Next production layers
-
-1. Replace visual timeline clips with a real audio timeline and non-destructive clip editing model.
-2. Move mixer/FX processing into AudioWorklet nodes and build a real bus graph.
-3. Add object-storage upload/resume for samples and recordings with waveform metadata.
-4. Add collaborative/project version history and conflict-safe autosave.
-5. Add Free/Pro entitlement gates around cloud storage, advanced DSP and exports.
-6. Add marketplace product fulfilment, creator accounts and revenue-share accounting.
-7. Add browser-native plugin SDK/manifest validation and a signed registry.
-8. Add stem rendering and MP3/AAC export where the selected browser/server path supports it.
-9. Add automated browser tests, audio regression tests and deployment health checks.
+The remaining high-value production layers are: real non-destructive audio timeline editing, AudioWorklet/WASM DSP and bus routing, resumable object-storage uploads for audio assets, version history/conflict handling, entitlement enforcement, creator marketplace fulfilment/revenue-share accounting, signed browser-plugin manifests, stem rendering, and automated browser/audio regression tests.
