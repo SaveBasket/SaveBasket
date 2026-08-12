@@ -5,10 +5,11 @@ SaveBasket is a consumer-first discovery and comparison platform. A shopper sear
 CURRENT STATE
 - Responsive customer-facing comparison site is live in index.html.
 - Search UI calls /api/search through the Vercel serverless API.
-- api/sourcing.js is now the provider-neutral sourcing engine.
+- api/sourcing.js is the provider-neutral sourcing engine.
 - Sourcing accepts authorised HTTPS JSON feeds through SOURCING_FEED_URLS and normalises retailer/marketplace/refurbisher/outlet offers into one schema.
-- Product matching uses GTIN/EAN/UPC/SKU when supplied, with a normalised-name fallback.
+- Product matching prefers GTIN/EAN/UPC identifiers and falls back to conservative brand/model/title normalisation rather than assuming a seller SKU is globally unique.
 - Search supports condition, source type, best-match and price sorting, availability filtering, total-cost ranking and best-deal grouping.
+- Feed ingestion has bounded timeouts, response-size protection, URL validation, currency-precision rounding and short-lived instance caching.
 - /api/sourcing/providers exposes safe adapter health without revealing credentials.
 - A clearly labelled demo catalogue remains enabled by default so the product works immediately without pretending that live retailer feeds exist.
 - My Basket lets shoppers save offers locally while comparing.
@@ -18,8 +19,8 @@ CURRENT STATE
 SOURCING ENGINE
 1. Configure one or more authorised HTTPS JSON feeds in SOURCING_FEED_URLS.
 2. Each offer should provide title/name and price; source, url, condition, shipping, currency, availability and product identifiers are strongly recommended.
-3. The engine fetches feeds with timeouts, rejects malformed offers, normalises condition/source/availability and calculates total cost.
-4. Search ranks relevance first, then total cost, stock state and quality signals. Product groups use identifiers first and a conservative normalised-name fallback.
+3. The engine fetches feeds with bounded timeouts and a 2.5MB response limit, rejects malformed offers, normalises condition/source/availability and calculates total cost.
+4. Search ranks relevance first, then total cost, stock state and quality signals. Product groups use trusted identifiers first and a conservative normalised-name fallback.
 5. Replace the demo fallback with real feeds only after commercial/API permissions are confirmed.
 
 DEMO DATA NOTICE
@@ -46,4 +47,4 @@ NEXT PRODUCTION MILESTONES
 11. Add automated tests, CI checks, rate limiting and production monitoring.
 
 DEPLOYMENT
-Vercel can serve the static customer application and /api/index.js as a serverless function. Configure OWNER_EMAIL, OWNER_PASSWORD, SESSION_SECRET, DATABASE_URL, SOURCING_FEED_URLS and SOURCING_DEMO_FALLBACK in Vercel Environment Variables; use .env.example as the safe template. Never commit real credentials.
+Vercel can serve the static customer application and /api/index.js as a serverless function. Configure OWNER_EMAIL, OWNER_PASSWORD, SESSION_SECRET, DATABASE_URL, SOURCING_FEED_URLS, SOURCING_DEMO_FALLBACK and optional sourcing timeout/cache variables in Vercel Environment Variables; use .env.example as the safe template. Never commit real credentials.
