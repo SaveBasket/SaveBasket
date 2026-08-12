@@ -1,15 +1,7 @@
 import crypto from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import { neon } from '@neondatabase/serverless';
-
-const CATALOG = [
-  { id:'iphone15-1', name:'Apple iPhone 15 128GB', source:'Example retailer', condition:'New', price:699, delivery:'Free delivery', emoji:'📱', url:'#' },
-  { id:'iphone15-2', name:'Apple iPhone 15 128GB', source:'Example marketplace seller', condition:'New', price:679, delivery:'Delivery calculated at checkout', emoji:'📱', url:'#' },
-  { id:'airpods-1', name:'Apple AirPods Pro (2nd gen)', source:'Example retailer', condition:'New', price:189, delivery:'Free delivery', emoji:'🎧', url:'#' },
-  { id:'shoes-1', name:'Performance Running Shoes', source:'Example sports retailer', condition:'New', price:84, delivery:'Free delivery', emoji:'👟', url:'#' },
-  { id:'laptop-1', name:'14-inch Performance Laptop', source:'Example electronics retailer', condition:'New', price:799, delivery:'Free delivery', emoji:'💻', url:'#' },
-  { id:'refurb-1', name:'Premium Smartphone 256GB', source:'Example refurbisher', condition:'Refurbished — excellent', price:529, delivery:'30-day returns', emoji:'♻️', url:'#' }
-];
+import { loadOffers, searchOffers, providerHealth } from './sourcing.js';
 
 function getConfig() {
   return {
@@ -24,20 +16,38 @@ function missingConfig(config) { return [!config.ownerEmail&&'OWNER_EMAIL',!conf
 function parseCookies(req) { const out={}; for(const part of (req.headers.cookie||'').split(';')){const i=part.indexOf('=');if(i>-1)out[part.slice(0,i).trim()]=decodeURIComponent(part.slice(i+1).trim())} return out; }
 function sign(value,secret){const sig=crypto.createHmac('sha256',secret).update(value).digest('hex');return `${value}.${sig}`;}
 function valid(token,secret,email){if(!token||!secret||!email)return false;const i=token.lastIndexOf('.');if(i<1)return false;const value=token.slice(0,i),sig=token.slice(i+1),expected=crypto.createHmac('sha256',secret).update(value).digest('hex');if(sig.length!==expected.length)return false;return crypto.timingSafeEqual(Buffer.from(sig),Buffer.from(expected))&&value.startsWith(`${email}|`)}
-function json(res,status,data){res.status(status);res.setHeader('content-type','application/json; charset=utf-8');res.setHeader('cache-control','no-store');res.end(JSON.stringify(data));}
+function json(res,status,data,cache='no-store'){res.status(status);res.setHeader('content-type','application/json; charset=utf-8');res.setHeader('cache-control',cache);res.setHeader('access-control-allow-origin','*');res.setHeader('access-control-allow-methods','GET,POST,OPTIONS');res.setHeader('access-control-allow-headers','content-type');res.end(JSON.stringify(data));}
 async function body(req){let s='';for await(const c of req)s+=c;try{return JSON.parse(s||'{}')}catch{return {}}}
 async function findOwnerUser(sql,email){const rows=await sql`SELECT id,email,password_hash FROM public.users WHERE lower(email)=lower(${email}) AND role='owner' LIMIT 1`;return rows[0]||null}
 async function ensureOwnerUser(sql,email,password){const existing=await findOwnerUser(sql,email);if(existing)return existing;if(!password)throw new Error('OWNER_PASSWORD is required for first-time owner setup');const hash=await bcrypt.hash(password,12);const inserted=await sql`INSERT INTO public.users (email,password_hash,role,must_change_password,created_at) VALUES (${email},${hash},'owner',false,now()) RETURNING id,email,password_hash`;return inserted[0]}
 
 export default async function handler(req,res){
-  // Public product discovery endpoint. It is deliberately provider-neutral: production
-  // retailer/marketplace adapters can be added without changing the customer UI.
+  if(req.method==='OPTIONS'){res.status(204);res.setHeader('access-control-allow-origin','*');res.setHeader('access-control-allow-methods','GET,POST,OPTIONS');res.setHeader('access-control-allow-headers','content-type');return res.end();}
+
+  // Public sourcing health: never exposes feed credentials, only adapter status.
+  if(req.method==='GET' && req.url.includes('/api/sourcing/providers')){
+    try{const result=await loadOffers();return json(res,200,{providers:providerHealth(result.providers),configuredFeeds:result.configuredFeeds,demoFallback:result.demoFallback,offerCount:result.offers.length},'public, max-age=30, stale-while-revalidate=120');}
+    catch(error){return json(res,503,{error:'Sourcing engine unavailable.',detail:String(error?.message||error)})}
+  }
+
+  // Provider-neutral product discovery. Live authorised feeds are configured with
+  // SOURCING_FEED_URLS; the demo catalogue remains available until that is disabled.
   if(req.method==='GET' && req.url.includes('/api/search')){
-    const raw=new URL(req.url,'https://savebasket.local').searchParams.get('q')?.trim()||'';
-    const terms=raw.toLowerCase().split(/\s+/).filter(Boolean);
-    const offers=terms.length?CATALOG.filter(p=>terms.every(t=>`${p.name} ${p.source} ${p.condition}`.toLowerCase().includes(t))):CATALOG;
-    offers.sort((a,b)=>a.price-b.price);
-    return json(res,200,{query:raw,offers,message:'Demo offer catalogue is active. Connect retailer feeds to replace example sources with live offers.'});
+    try{
+      const params=new URL(req.url,'https://savebasket.local').searchParams;
+      const query=params.get('q')?.trim()||'';
+      const condition=params.get('condition')||'all';
+      const source=params.get('source')||'all';
+      const sort=params.get('sort')||'best';
+      const limit=Math.min(60,Math.max(1,Number(params.get('limit')||40)));
+      const result=await loadOffers();
+      const found=searchOffers(result.offers,query,{condition,source,sort,limit});
+      return json(res,200,{query,filters:{condition,source,sort,limit},...found,providers:providerHealth(result.providers),demoFallback:result.demoFallback},'public, max-age=30, stale-while-revalidate=120');
+    }catch(error){console.error('Sourcing search error',error);return json(res,503,{error:'Product sourcing is temporarily unavailable.'});}
+  }
+
+  if(req.method==='GET' && req.url.includes('/api/health')){
+    return json(res,200,{ok:true,service:'savebasket-api',sourcing:'ready',timestamp:new Date().toISOString()},'no-store');
   }
 
   const config=getConfig();const missing=missingConfig(config);
