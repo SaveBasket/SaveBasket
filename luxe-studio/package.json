@@ -1,8 +1,18 @@
 {
   "name": "luxe-studio",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "scripts": {"dev":"vite","build":"vite build","preview":"vite preview"},
-  "devDependencies": {"@vitejs/plugin-react":"latest","vite":"latest","typescript":"latest","react":"latest","react-dom":"latest"}
+  "dependencies": {
+    "@supabase/supabase-js":"latest",
+    "stripe":"latest"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react":"latest",
+    "vite":"latest",
+    "typescript":"latest",
+    "react":"latest",
+    "react-dom":"latest"
+  }
 }
