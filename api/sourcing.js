@@ -11,6 +11,7 @@ const memory = globalThis.__savebasketSourcingCache || (globalThis.__savebasketS
 function text(value=''){return String(value??'').trim();}
 function tokens(value=''){return text(value).toLowerCase().replace(/[^a-z0-9]+/g,' ').split(/\s+/).filter(Boolean).filter(t=>!STOP.has(t));}
 function number(value){if(typeof value==='number')return Number.isFinite(value)&&value>=0?value:null;const cleaned=text(value).replace(/[^0-9.-]+/g,'');const n=Number(cleaned);return Number.isFinite(n)&&n>=0?n:null;}
+function money(value){const n=number(value);return n===null?null:Math.round(n*100)/100;}
 function safeUrl(value){const v=text(value);try{const u=new URL(v);return /^https?:$/.test(u.protocol)?u.toString():'#'}catch{return '#'}}
 function normalCondition(value='new'){const v=text(value).toLowerCase();if(/refurb|renew|recondition/.test(v))return 'refurbished';if(/used|pre.?owned|second.?hand/.test(v))return 'used';if(/open.?box/.test(v))return 'open_box';return 'new';}
 function normalAvailability(value='in_stock'){const v=text(value).toLowerCase();if(/out|unavailable|sold/.test(v))return 'out_of_stock';if(/pre.?order/.test(v))return 'preorder';return 'in_stock';}
@@ -18,11 +19,11 @@ function sourceType(value='retailer'){const v=text(value).toLowerCase();if(/mark
 function canonicalKey(o){if(o.gtin)return `gtin:${text(o.gtin)}`;if(o.ean)return `ean:${text(o.ean)}`;if(o.upc)return `upc:${text(o.upc)}`;const product=tokens(`${o.brand||''} ${o.model||''} ${o.title||''}`).join('-');return `product:${product}`;}
 export function normalizeOffer(raw,provider='feed'){
   const title=text(raw.title||raw.name||raw.product_name||raw.productName);if(!title)return null;
-  const price=number(raw.price??raw.current_price??raw.sale_price);if(price===null)return null;
-  const shipping=number(raw.shipping??raw.shipping_price??raw.delivery_price)??0;
+  const price=money(raw.price??raw.current_price??raw.sale_price);if(price===null)return null;
+  const shipping=money(raw.shipping??raw.shipping_price??raw.delivery_price)??0;
   const currency=text(raw.currency||raw.price_currency||'GBP').toUpperCase()||'GBP';
   const source=text(raw.source||raw.retailer||raw.merchant||provider);
-  return {id:text(raw.id||raw.offer_id||raw.external_id||`${provider}-${canonicalKey(raw)}`),title,brand:text(raw.brand),model:text(raw.model||raw.product_model),sku:text(raw.sku),gtin:text(raw.gtin),ean:text(raw.ean),upc:text(raw.upc),source,sourceType:sourceType(raw.sourceType||raw.source_type||raw.channel),condition:normalCondition(raw.condition),price,shipping,total:price+shipping,currency,availability:normalAvailability(raw.availability||raw.stock),delivery:text(raw.delivery||raw.shipping_label||raw.delivery_estimate||'Delivery details at source'),url:safeUrl(raw.url||raw.link||raw.product_url),image:safeUrl(raw.image||raw.image_url),rating:number(raw.rating),updatedAt:text(raw.updatedAt||raw.updated_at||new Date().toISOString()),provider};
+  return {id:text(raw.id||raw.offer_id||raw.external_id||`${provider}-${canonicalKey(raw)}`),title,brand:text(raw.brand),model:text(raw.model||raw.product_model),sku:text(raw.sku),gtin:text(raw.gtin),ean:text(raw.ean),upc:text(raw.upc),source,sourceType:sourceType(raw.sourceType||raw.source_type||raw.channel),condition:normalCondition(raw.condition),price,shipping,total:Math.round((price+shipping)*100)/100,currency,availability:normalAvailability(raw.availability||raw.stock),delivery:text(raw.delivery||raw.shipping_label||raw.delivery_estimate||'Delivery details at source'),url:safeUrl(raw.url||raw.link||raw.product_url),image:safeUrl(raw.image||raw.image_url),rating:money(raw.rating),updatedAt:text(raw.updatedAt||raw.updated_at||new Date().toISOString()),provider};
 }
 async function fetchFeed(url){
   const parsed=new URL(url);if(parsed.protocol!=='https:')throw new Error('feed must use HTTPS');
