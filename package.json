@@ -1,10 +1,11 @@
 {
   "name": "savebasket-platform",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "check": "node --check api/index.js"
+    "check": "node --check api/index.js && node --check api/sourcing.js",
+    "test": "node --test api/sourcing.test.js"
   },
   "dependencies": {
     "@neondatabase/serverless": "latest",
